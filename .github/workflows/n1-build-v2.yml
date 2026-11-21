@@ -1,0 +1,39 @@
+name: n1-honk-v2
+on: [workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: deps
+        run: sudo apt-get update && sudo apt-get -y install $(curl -fsSL https://ophub.org/ubuntu2404-make-openwrt-depends)
+      - name: source
+        run: |
+          git clone --depth 1 -b master https://github.com/immortalwrt/immortalwrt openwrt
+          cp -f config/immortalwrt_master/config openwrt/.config
+      - name: feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          bash ../config/immortalwrt_master/diy-part2.sh 192.168.1.2 true
+      - name: build
+        run: |
+          cd openwrt
+          make defconfig
+          make download -j8
+          make -j$(nproc) V=s || make -j1 V=s
+          mkdir -p output
+          cp -f bin/targets/*/*/*-generic-rootfs.tar.gz output/
+      - name: package
+        uses: ophub/amlogic-s9xxx-openwrt@main
+        with:
+          openwrt_path: openwrt/output/*-generic-rootfs.tar.gz
+          openwrt_board: s905d
+          openwrt_kernel: 6.12.y
+          openwrt_ip: 192.168.1.2
+          auto_kernel: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n1-honk
+          path: ${{ env.PACKAGED_OUTPUTPATH }}/*
